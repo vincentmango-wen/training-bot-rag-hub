@@ -145,6 +145,71 @@ X-Client-Type: ui | training_bot | system | worker
 
 ---
 
+## **5.2 API実装Issue分解表**
+
+本節では、API設計をGitHub Issue単位へ分解する。
+
+分解方針は以下とする。
+
+```text
+1 API = 原則 1 Issue
+ただし、履歴一覧・履歴詳細のように同一Controllerで実装できるものは1 Issueにまとめる
+Request Validation / Response Schema / 認証認可 / Audit Log / テスト観点を各Issueに含める
+RAGから注文API・Trading Engine・Bot設定変更APIへ接続するIssueは作成しない
+```
+| API ID      | Method | URI                                | 実装Issue | Issue名                                      | Milestone | Label                                                 | 依存Issue                                                | 完了条件                                                                               |
+| ----------- | ------ | ---------------------------------- | ------- | ------------------------------------------- | --------- | ----------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| RAG-API-001 | POST   | `/api/v1/rag/query`                | GH-028  | POST /api/v1/rag/query を実装する                | M3        | type: feature / area: api / priority: critical        | GH-021, GH-022, GH-024, GH-025, GH-027, GH-032, GH-033 | Request Validation、Response Schema、Audit Log、Provider Usage、order_permission=false |
+| RAG-API-002 | POST   | `/api/v1/rag/bot-context`          | GH-029  | POST /api/v1/rag/bot-context を実装する          | M3        | type: feature / area: api / priority: critical        | GH-021, GH-022, GH-027, GH-030, GH-032, GH-033         | Bot仮シグナルを投資指示として扱わない、BotContext保存、order_permission=false                           |
+| RAG-API-003 | POST   | `/api/v1/rag/similar-cases`        | GH-030  | POST /api/v1/rag/similar-cases を実装する        | M3        | type: feature / area: api / priority: high            | GH-021, GH-022, GH-023                                 | 類似ケース配列、similarity、risk_notes、citationを返す                                          |
+| RAG-API-004 | GET    | `/api/v1/rag/history`              | GH-031  | GET /api/v1/rag/history を実装する               | M3        | type: feature / area: api / priority: high            | GH-026, GH-028, GH-029, GH-030                         | query、response、citation、guardrail_statusを一覧表示できる                                   |
+| RAG-API-005 | GET    | `/api/v1/rag/history/{query_id}`   | GH-031  | GET /api/v1/rag/history/{query_id} を実装する    | M3        | type: feature / area: api / priority: high            | GH-026, GH-028, GH-029, GH-030                         | retrieved_chunks、response、citations、provider_usageを詳細表示できる                         |
+| RAG-API-006 | POST   | `/api/v1/rag/ingestions`           | GH-064  | POST /api/v1/rag/ingestions を実装する           | M2        | type: feature / area: ingestion / priority: high      | GH-010, GH-011, GH-015                                 | 取込Jobを作成し、Secret Masking / Prompt Injection Scan対象にする                              |
+| RAG-API-007 | POST   | `/api/v1/rag/indexing/jobs`        | GH-065  | POST /api/v1/rag/indexing/jobs を実装する        | M2        | type: feature / area: indexing / priority: high       | GH-012, GH-013, GH-016, GH-018, GH-019, GH-020         | Indexing Jobを作成し、force_reindexを制御する                                                |
+| RAG-API-008 | GET    | `/api/v1/rag/sources`              | GH-066  | GET /api/v1/rag/sources を実装する               | M2        | type: feature / area: api / priority: medium          | GH-010                                                 | 有効なSource一覧を返す。無効Sourceは検索対象外として扱う                                                 |
+| RAG-API-009 | POST   | `/api/v1/rag/provider-evaluations` | GH-067  | POST /api/v1/rag/provider-evaluations を実装する | M6        | type: feature / area: llm-provider / priority: medium | GH-024, GH-025, GH-026                                 | Provider評価Jobを作成し、評価対象Providerとdatasetを保存する                                        |
+| RAG-API-010 | GET    | `/api/v1/rag/provider-usage`       | GH-068  | GET /api/v1/rag/provider-usage を実装する        | M3        | type: feature / area: audit / priority: high          | GH-026                                                 | provider、model、tokens、estimated_cost、latencyを取得できる                                 |
+| RAG-API-011 | GET    | `/api/v1/rag/health`               | GH-069  | GET /api/v1/rag/health を実装する                | M0        | type: feature / area: infra / priority: high          | GH-002, GH-003                                         | db、redis、vector_store、llm_provider、embedding_providerの状態を返す                        |
+
+
+## 5.3 API Issue共通完了条件
+
+すべてのAPI実装Issueは以下を満たす。
+```text
+Request DTOがある
+Request Validationがある
+Response DTOがある
+Error Responseが共通形式で返る
+JWT認証の有無が明記されている
+Roleごとの認可条件が明記されている
+Audit Log保存対象が明記されている
+Providerを使う場合はProvider Adapter経由である
+order_permission / orderPermission は常に false である
+Secret / API Key / JWT をレスポンス・ログ・Provider送信内容に含めない
+正常系テストがある
+異常系テストがある
+Validationテストがある
+Securityテストがある
+Guardrailテストがある
+```
+## 5.4 API Issue別テスト観点
+
+| API ID      | 正常系                          | 異常系                 | Security            | Guardrail                        | Audit                                                    |
+| ----------- | ---------------------------- | ------------------- | ------------------- | -------------------------------- | -------------------------------------------------------- |
+| RAG-API-001 | summary / risk / citations返却 | query空、timeframe不正  | JWTなし401            | 注文誘導BLOCK、order_permission=false | Query / Retrieval / Response / Citation / Provider Usage |
+| RAG-API-002 | Bot説明生成                      | bot_id未指定、features空 | TRAINING_BOT権限確認    | BUY/SELLを投資指示にしない                | BotContext / Response                                    |
+| RAG-API-003 | 類似ケース返却                      | features空           | JWTなし401            | 類似ケースを将来保証として扱わない                | Retrieval                                                |
+| RAG-API-004 | 履歴一覧返却                       | page不正              | 他人の履歴403            | Secret表示なし                       | History Access                                           |
+| RAG-API-005 | 履歴詳細返却                       | query_id不正          | 他人の詳細403            | Secret表示なし                       | History Access                                           |
+| RAG-API-006 | 取込Job作成                      | source_type不正       | Worker権限確認          | 危険文書隔離                           | Ingestion Job                                            |
+| RAG-API-007 | Indexing Job作成               | document_ids空       | Worker権限確認          | Quarantine文書をIndexしない            | Indexing Job                                             |
+| RAG-API-008 | Source一覧取得                   | 無効source除外          | Admin/User権限確認      | 危険source除外                       | Source Access                                            |
+| RAG-API-009 | Provider評価Job作成              | provider不正          | Admin/Evaluator権限確認 | 評価中もorder_permission=false       | Evaluation Job                                           |
+| RAG-API-010 | Provider Usage取得             | from > to           | Admin権限確認           | Secret非表示                        | Provider Usage                                           |
+| RAG-API-011 | Health取得                     | DB停止                | 公開範囲制御              | Secret非表示                        | 障害時ログ                                                    |
+
+
+
 # **6. API詳細定義**
 
 ## **6.1 RAG Query API**
