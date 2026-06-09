@@ -32,15 +32,87 @@ npm run lint
 npm run test
 npm run build
 ```
+## Local Infrastructure
+
+GH-003では PostgreSQL / Redis / pgvector を Docker Compose で起動します。
+
+### 前提
+
+Docker daemon が起動していることを確認します。
+
+Colimaを使う場合:
+
+```bash
+colima start
+docker info
+```
+
+## 起動
+```
+npm run docker:up
+npm run docker:ps
+```
+
+## 期待結果:
+```
+pmtp-rag-postgres   healthy
+pmtp-rag-redis      healthy
+```
+
+## PostgreSQL接続確認
+```
+npm run db:psql
+```
+psql内で以下を実行します。
+```
+SELECT current_database();
+SELECT current_user;
+SELECT extname FROM pg_extension WHERE extname = 'vector';
+\q
+```
+期待結果:
+```
+current_database = rag_hub
+current_user = rag_user
+extname = vector
+```
+Redis接続確認
+```
+npm run redis:cli
+```
+redis-cli内で以下を実行します。
+```
+PING
+```
+期待結果:
+```
+PONG
+```
+ログ確認
+```
+npm run docker:logs
+```
+停止
+```
+npm run docker:down
+```
+## 初期化SQLを再実行したい場合
+PostgreSQLのDocker volumeを削除して再作成します。
+```
+npm run docker:reset
+```
+注意: docker:reset はローカルDBデータを削除します。必要な検証データがある場合は実行前に退避してください。
+
 
 ## 開発起動
 ```
-pnpm dev
+npm run dev
 ```
 Health check:
 ```
 curl http://localhost:3000/health
 ```
+
 
 ## GitHub Issue運用
 - Issue単位でbranchを切る

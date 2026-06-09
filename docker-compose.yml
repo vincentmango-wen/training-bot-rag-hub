@@ -6,17 +6,17 @@ services:
     container_name: pmtp-rag-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: rag_hub
-      POSTGRES_USER: rag_user
-      POSTGRES_PASSWORD: rag_password_local_only
-      TZ: Asia/Tokyo
+      POSTGRES_DB: ${POSTGRES_DB:-rag_hub}
+      POSTGRES_USER: ${POSTGRES_USER:-rag_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag_password_local_only}
+      TZ: ${TZ:-Asia/Tokyo}
     ports:
-      - "5433:5432"
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - rag_postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_hub"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     ports:
-      - "6380:6379"
+      - "${REDIS_HOST_PORT:-6380}:6379"
     volumes:
       - rag_redis_data:/data
       - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
