@@ -14,7 +14,14 @@
     "lint": "npm --prefix apps/api run lint",
     "test": "npm --prefix packages/shared run test && npm --prefix apps/api run test",
     "test:e2e": "npm --prefix apps/api run test:e2e",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:reset": "docker compose down -v && docker compose up -d",
+    "docker:logs": "docker compose logs -f",
+    "docker:ps": "docker compose ps",
+    "db:psql": "docker compose exec postgres psql -U rag_user -d rag_hub",
+    "redis:cli": "docker compose exec redis redis-cli"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

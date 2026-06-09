@@ -1,0 +1,50 @@
+name: training-bot-rag-hub
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: pmtp-rag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rag_hub
+      POSTGRES_USER: rag_user
+      POSTGRES_PASSWORD: rag_password_local_only
+      TZ: Asia/Tokyo
+    ports:
+      - "5433:5432"
+    volumes:
+      - rag_postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_hub"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - rag_local
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: pmtp-rag-redis
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - rag_redis_data:/data
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - rag_local
+
+volumes:
+  rag_postgres_data:
+  rag_redis_data:
+
+networks:
+  rag_local:
+    driver: bridge
