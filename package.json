@@ -1,0 +1,23 @@
+{
+  "name": "training-bot-rag-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Training Bot RAG Hub for Personal Multi Trading Platform",
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "npm --prefix apps/api run start:dev",
+    "build": "npm --prefix packages/shared run build && npm --prefix apps/api run build",
+    "typecheck": "npm --prefix packages/shared run typecheck && npm --prefix apps/api run typecheck",
+    "lint": "npm --prefix apps/api run lint",
+    "test": "npm --prefix packages/shared run test && npm --prefix apps/api run test",
+    "test:e2e": "npm --prefix apps/api run test:e2e",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "prettier": "^3.3.3"
+  }
+}

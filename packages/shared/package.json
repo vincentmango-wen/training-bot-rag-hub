@@ -1,0 +1,17 @@
+{
+    "name": "@pmtp/shared",
+    "version": "0.1.0",
+    "private": true,
+    "type": "commonjs",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "typecheck": "tsc --noEmit -p tsconfig.json",
+        "lint": "echo \"shared lint placeholder\"",
+        "test": "echo \"shared test placeholder\""
+    },
+    "devDependencies": {
+        "typescript": "^5.9.3"
+    }
+}

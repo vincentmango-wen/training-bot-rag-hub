@@ -1,0 +1,23 @@
+{
+    "compilerOptions": {
+      "target": "ES2022",
+      "module": "CommonJS",
+      "moduleResolution": "Node",
+      "lib": ["ES2022"],
+      "strict": true,
+      "noImplicitAny": true,
+      "strictNullChecks": true,
+      "noUncheckedIndexedAccess": true,
+      "exactOptionalPropertyTypes": true,
+      "esModuleInterop": true,
+      "forceConsistentCasingInFileNames": true,
+      "skipLibCheck": true,
+      "resolveJsonModule": true,
+      "declaration": true,
+      "sourceMap": true,
+      "baseUrl": ".",
+      "paths": {
+        "@pmtp/shared": ["packages/shared/src/index.ts"]
+      }
+    }
+  }
