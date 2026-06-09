@@ -1,0 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE SCHEMA IF NOT EXISTS rag;
+
+COMMENT ON SCHEMA rag IS 'Schema for Training Bot RAG Hub objects';
