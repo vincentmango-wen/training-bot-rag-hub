@@ -333,6 +333,126 @@ flowchart TD
   GH013 --> GH014
   GH073 --> GH014
   GH014 --> GH076
+```
+---
+
+### 7.2.2 GH-009 Guardrail要件Issue分解結果
+
+GH-009では、Training Bot RAG Hub の Guardrail 要件を、実装・検証・監査できる GitHub Issue 単位へ分解する。
+
+#### 分解方針
+
+| 方針 | 内容 |
+|---|---|
+| 1 Issueの粒度 | 1〜2日で完了できる単位 |
+| PR単位 | 1 Issue = 1 PR |
+| 対象 | 入力Guardrail / 出力Guardrail / Provider送信前保護 / 監査ログ / テスト |
+| 対象外 | 注文実行、Bot設定変更、緊急停止解除、自動売買判断 |
+| 安全制約 | RAGは注文権限を持たず、order_permission / orderPermission は常に false |
+| 監査制約 | Guardrail判定、BLOCK理由、Provider送信前Masking結果を追跡可能にする |
+
+#### Guardrail分類
+
+| 分類 | 内容 | 主な検知・制御対象 |
+|---|---|---|
+| Input Guardrail | ユーザー入力・Bot入力を検査する | 注文要求、利益保証要求、Secret要求、SSRF疑いURL |
+| Retrieved Context Guardrail | 取得文書を命令として扱わない | Prompt Injection、Tool Injection、System Prompt Override |
+| Provider Payload Guardrail | 外部LLM送信前に危険情報を除外する | API Key、JWT、Secret、個人情報、内部制御情報 |
+| Output Guardrail | LLM出力を検証する | Schema不一致、order_permission=true、断定的投資助言、Citation欠落 |
+| Audit Guardrail | 判定結果を保存する | PASS / WARNING / BLOCKED、理由、trace_id、query_id |
+
+#### 既存Issueで追跡するGuardrail実装範囲
+
+| Issue ID | 対象 | 主な成果物 | 判定 |
+|---|---|---|---|
+| GH-032 | Output JSON Schema Validation | RAG回答Schema検証、Parse失敗時BLOCK | 既存Issueで対応 |
+| GH-033 | order_permission=false強制処理 | アプリケーション側で false 固定 | 既存Issueで対応 |
+| GH-034 | Prompt Injection検知 | Ignore previous instructions 等の検知 | 既存Issueで対応 |
+| GH-035 | Secret Masking | API Key / JWT / Secret のマスク | 既存Issueで対応 |
+| GH-036 | 禁止表現検知 | 利益保証、勝率保証、断定的投資助言の検知 | 既存Issueで対応 |
+| GH-037 | SSRF危険URL検知 | localhost / 169.254.169.254 等の遮断 | 既存Issueで対応 |
+| GH-038 | Guardrail Log保存 | guardrail_logs / audit_logs 保存 | 既存Issueで対応 |
+| GH-039 | Order Service接続不可検証 | RAGからOrder Serviceへ書込不可を検証 | 既存Issueで対応 |
+
+#### 現行WBSで専用Issueが不足しているGuardrail範囲
+
+以下はGuardrail要件として重要だが、現行のGH-032〜GH-039だけでは専用Issueとして追跡しにくい。
+
+| 追加Issue ID | Issue名 | 対象 | Label | 優先度 | Milestone |
+|---|---|---|---|---|---|
+| GH-078 | Guardrail設計書を作成する | Guardrail全体方針、分類、BLOCK条件 | type: docs / area: guardrail | critical | M1 |
+| GH-079 | Guardrail Rule定義を作成する | 禁止語、危険URL、Secret Pattern、投資助言表現 | type: security / area: guardrail | critical | M4 |
+| GH-080 | Input Guardrail共通Interfaceを定義する | user query / bot context 入力検証 | type: security / area: guardrail | critical | M4 |
+| GH-081 | Output Guardrail共通Interfaceを定義する | LLM出力検証、Schema検証、orderPermission固定 | type: security / area: guardrail | critical | M4 |
+| GH-082 | Provider送信前Redactionを実装する | 外部LLMへ送る前のSecret / PII除外 | type: security / area: llm-provider | critical | M4 |
+| GH-083 | Retrieved Context安全化を実装する | 外部文書内の命令文を命令として扱わない処理 | type: security / area: guardrail | critical | M4 |
+| GH-084 | 危険Document Quarantineを実装する | Prompt Injection疑い文書の隔離 | type: security / area: ingestion | high | M4 |
+| GH-085 | Guardrail Error DTOを統一する | BLOCK / WARNING / PASS のHTTP応答形式 | type: feature / area: api | high | M4 |
+| GH-086 | Guardrail Audit Event仕様を確定する | GUARDRAIL_PASSED / BLOCKED / WARNING の保存仕様 | type: docs / area: audit | high | M4 |
+| GH-087 | Guardrail E2Eテストを作成する | Query API / Bot Context / Similar Cases横断検証 | type: test / area: guardrail | critical | M6 |
+
+#### Guardrail Issue依存関係
+
+```mermaid
+flowchart TD
+  GH078["GH-078 Guardrail設計書"]
+  GH079["GH-079 Guardrail Rule定義"]
+  GH080["GH-080 Input Guardrail Interface"]
+  GH081["GH-081 Output Guardrail Interface"]
+  GH032["GH-032 Output JSON Schema Validation"]
+  GH033["GH-033 order_permission=false強制"]
+  GH034["GH-034 Prompt Injection検知"]
+  GH035["GH-035 Secret Masking"]
+  GH036["GH-036 禁止表現検知"]
+  GH037["GH-037 SSRF危険URL検知"]
+  GH038["GH-038 Guardrail Log保存"]
+  GH039["GH-039 Order Service接続不可検証"]
+  GH082["GH-082 Provider送信前Redaction"]
+  GH083["GH-083 Retrieved Context安全化"]
+  GH084["GH-084 危険Document Quarantine"]
+  GH085["GH-085 Guardrail Error DTO"]
+  GH086["GH-086 Guardrail Audit Event仕様"]
+  GH087["GH-087 Guardrail E2Eテスト"]
+
+  GH078 --> GH079
+  GH079 --> GH080
+  GH079 --> GH081
+  GH081 --> GH032
+  GH081 --> GH033
+  GH080 --> GH034
+  GH080 --> GH035
+  GH080 --> GH036
+  GH080 --> GH037
+  GH035 --> GH082
+  GH034 --> GH083
+  GH083 --> GH084
+  GH080 --> GH085
+  GH081 --> GH085
+  GH038 --> GH086
+  GH032 --> GH087
+  GH033 --> GH087
+  GH034 --> GH087
+  GH035 --> GH087
+  GH036 --> GH087
+  GH037 --> GH087
+  GH039 --> GH087
+```
+## Guardrail受入条件
+
+| 項目                      | 基準 |
+| ----------------------- | -- |
+| order_permission=true   | 0件 |
+| orderPermission=true    | 0件 |
+| RAGからOrder API呼び出し      | 0件 |
+| RAGからTrading Engine直接命令 | 0件 |
+| RAGからBot設定変更            | 0件 |
+| RAGから緊急停止解除             | 0件 |
+| Prompt Injection突破      | 0件 |
+| Secret漏洩                | 0件 |
+| ProviderへのSecret送信      | 0件 |
+| Guardrail Log欠損         | 0件 |
+| Trading Engineへの影響      | 0件 |
+
 
 ---
 
