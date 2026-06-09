@@ -38,6 +38,48 @@ npm run lint
 npm run test
 npm run build
 ```
+
+## 環境変数
+
+GH-005では、ローカル開発用の環境変数テンプレートとして `.env.example` を用意します。
+
+`.env.example` には変数名だけを定義し、Secret / API Key / JWT / DBパスワードの実値は入れません。
+
+ローカル環境では以下を実行して `.env` を作成します。
+
+```bash
+cp .env.example .env
+```
+
+`.env` はGit管理対象外です。実値は `.env` にのみ記入します。
+
+以下はコミット禁止です。
+
+```text
+OPENAI_API_KEY の実値
+JWT の実値
+DBパスワードの実値
+Secret Manager相当の値
+本番接続情報
+```
+
+Secret混入確認:
+
+```bash
+grep -nE '=.+' .env.example || true
+grep -nE '(sk-|eyJ|secret|password|token|api_key)' .env.example || true
+git check-ignore .env
+git check-ignore .env.example || echo ".env.example is not ignored"
+```
+
+期待結果:
+
+```text
+.env.example に実値が出ない
+.env は ignore される
+.env.example は ignore されない
+```
+
 ## Local Infrastructure
 
 GH-003では PostgreSQL / Redis / pgvector を Docker Compose で起動します。
@@ -118,6 +160,22 @@ Health check:
 ```
 curl http://localhost:3000/health
 ```
+
+## CI
+このリポジトリでは、Pull Request作成時とmainブランチへのpush時にGitHub ActionsでCIを実行します。
+
+CIで実行するコマンド:
+```bash
+npm run typecheck
+npm run lint
+npm run test
+npm run build
+```
+CIではSecret / API Key / JWTを使用しません。
+.env、.env.*はコミット対象外です。
+
+
+`.gitignore`では`.env`と`.env.*`が除外され、`.env.example`だけ許可されています。:contentReference[oaicite:8]{index=8}
 
 
 ## GitHub Issue運用
