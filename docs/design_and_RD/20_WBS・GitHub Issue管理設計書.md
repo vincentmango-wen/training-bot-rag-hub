@@ -243,6 +243,97 @@ Prompt Injection検知の最小ルールを実装する
 |GH-008|DB設計をIssue単位へ分解する|type: docs / area: db|high|
 |GH-009|Guardrail要件をIssue単位へ分解する|type: docs / area: guardrail|critical|
 
+### 7.2.1 GH-008 DB設計Issue分解結果
+
+GH-008では、DB・ER設計書で定義されたMVP必須テーブルを、GitHub Issue単位へ分解する。
+
+#### 分解方針
+
+| 方針 | 内容 |
+|---|---|
+| 1 Issueの粒度 | 1〜2日で完了できる単位 |
+| PR単位 | 1 Issue = 1 PR |
+| 対象 | Prisma Schema / Migration / DB制約 / Index / 検証SQL |
+| 対象外 | RAG Query API実装、LLM Provider実装、UI実装 |
+| 安全制約 | RAG側に注文実行系テーブルを作らない |
+| 監査制約 | Query、Retrieval、Response、Citation、Guardrail、Provider Usageを追跡可能にする |
+
+#### 既存Issueで追跡するDB実装範囲
+
+| Issue ID | 対象 | 主なテーブル・成果物 | 判定 |
+|---|---|---|---|
+| GH-010 | Source Schema | rag_sources | 既存Issueで対応 |
+| GH-011 | Document Schema | rag_documents | 既存Issueで対応 |
+| GH-012 | Chunk Schema | rag_chunks | 既存Issueで対応 |
+| GH-013 | Embedding Schema | rag_embeddings | 既存Issueで対応 |
+| GH-014 | Prisma Migration | 初期Migration、pgvector拡張、index | 既存Issueで対応 |
+| GH-015 | Document登録Service | rag_documents 登録処理 | 既存Issueで対応 |
+| GH-016 | Chunk分割Service | rag_chunks 生成処理 | 既存Issueで対応 |
+| GH-017 | Metadata付与処理 | metadata、symbol、timeframe、risk_tags | 既存Issueで対応 |
+| GH-018 | Embedding Adapter Interface | EmbeddingProvider interface | 既存Issueで対応 |
+| GH-019 | OpenAI Embedding実装 | text-embedding-3-small 呼び出し | 既存Issueで対応 |
+| GH-020 | pgvector保存処理 | rag_embeddings 保存・検索準備 | 既存Issueで対応 |
+
+#### 現行WBSで専用Issueが不足しているDB範囲
+
+以下はDB・ER設計書ではMVP必須だが、現行のGH-010〜GH-020だけでは専用Issueとして追跡しにくい。
+
+| 追加Issue ID | Issue名 | 対象テーブル | Label | 優先度 | Milestone |
+|---|---|---|---|---|---|
+| GH-064 | rag_source_scores Schemaを作成する | rag_source_scores | type: feature / area: db | high | M2 |
+| GH-065 | rag_ingestion_jobs Schemaを作成する | rag_ingestion_jobs / rag_ingestion_job_items | type: feature / area: db | high | M2 |
+| GH-066 | rag_queries Schemaを作成する | rag_queries | type: feature / area: db | critical | M3 |
+| GH-067 | rag_retrieval_results Schemaを作成する | rag_retrieval_results | type: feature / area: db | critical | M3 |
+| GH-068 | rag_responses Schemaを作成する | rag_responses | type: feature / area: db | critical | M3 |
+| GH-069 | rag_citations Schemaを作成する | rag_citations | type: feature / area: db | critical | M3 |
+| GH-070 | rag_guardrail_results Schemaを作成する | rag_guardrail_results | type: security / area: guardrail | critical | M4 |
+| GH-071 | rag_bot_contexts Schemaを作成する | rag_bot_contexts | type: feature / area: db | high | M3 |
+| GH-072 | rag_provider_calls Schemaを作成する | rag_provider_policies / rag_provider_calls | type: feature / area: llm-provider | high | M3 |
+| GH-073 | rag_provider_usage_logs Schemaを作成する | rag_provider_usage_logs / rag_provider_errors | type: feature / area: audit | high | M3 |
+| GH-074 | rag_eval_dataset Schemaを作成する | rag_eval_datasets / rag_eval_cases | type: feature / area: db | medium | Phase 2 |
+| GH-075 | rag_eval_results Schemaを作成する | rag_eval_runs / rag_eval_results | type: feature / area: db | medium | Phase 2 |
+| GH-076 | DB制約テストを作成する | confidence / order_permission / FK / unique制約 | type: test / area: db | critical | M6 |
+| GH-077 | pgvector Index性能確認を実施する | rag_embeddings index | type: test / area: db | high | M6 |
+
+#### DB Issue依存関係
+
+```mermaid
+flowchart TD
+  GH010["GH-010 rag_sources"]
+  GH064["GH-064 rag_source_scores"]
+  GH011["GH-011 rag_documents"]
+  GH012["GH-012 rag_chunks"]
+  GH013["GH-013 rag_embeddings"]
+  GH014["GH-014 Prisma Migration"]
+  GH065["GH-065 ingestion jobs"]
+  GH066["GH-066 rag_queries"]
+  GH067["GH-067 retrieval results"]
+  GH068["GH-068 rag_responses"]
+  GH069["GH-069 rag_citations"]
+  GH070["GH-070 guardrail results"]
+  GH071["GH-071 bot contexts"]
+  GH072["GH-072 provider calls"]
+  GH073["GH-073 provider usage"]
+  GH076["GH-076 DB constraint tests"]
+
+  GH010 --> GH064
+  GH010 --> GH011
+  GH011 --> GH012
+  GH012 --> GH013
+  GH010 --> GH065
+  GH010 --> GH066
+  GH066 --> GH067
+  GH066 --> GH068
+  GH067 --> GH069
+  GH068 --> GH069
+  GH068 --> GH070
+  GH068 --> GH071
+  GH066 --> GH072
+  GH072 --> GH073
+  GH013 --> GH014
+  GH073 --> GH014
+  GH014 --> GH076
+
 ---
 
 ## **7.3 M2: Data Foundation**

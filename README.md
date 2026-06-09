@@ -193,3 +193,5 @@ feature/gh-001-repository-setup
 | 文書 | パス | 対応Issue |
 |---|---|---|
 | WBS・GitHub Issue管理設計書 | `docs/design_and_RD/20_WBS・GitHub Issue管理設計書.md` | GH-006 |
+| DB・ER設計書 | `docs/design_and_RD/05_DB_ER設計書.md` | GH-008 |
+| DB設計Issue分解 | `docs/design_and_RD/20_WBS・GitHub Issue管理設計書.md` | GH-008 |
