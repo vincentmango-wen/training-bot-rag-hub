@@ -26,7 +26,13 @@ packages/
 
 ## 初期セットアップ
 ```
-npm install
+## 初期セットアップ
+
+```bash
+npm ci
+npm ci --prefix packages/shared
+npm ci --prefix apps/api
+
 npm run typecheck
 npm run lint
 npm run test
