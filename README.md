@@ -187,3 +187,9 @@ Branch例:
 ```
 feature/gh-001-repository-setup
 ```
+
+## 設計書
+
+| 文書 | パス | 対応Issue |
+|---|---|---|
+| WBS・GitHub Issue管理設計書 | `docs/design_and_RD/20_WBS・GitHub Issue管理設計書.md` | GH-006 |
