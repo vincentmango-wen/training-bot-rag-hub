@@ -334,7 +334,57 @@ flowchart TD
   GH073 --> GH014
   GH014 --> GH076
 ```
+
 ---
+
+## **7.3 M2: Data Foundation**
+
+|**Issue ID**|**Issue名**|**Label**|**優先度**|
+|---|---|---|---|
+|GH-010|rag_sources Schemaを作成する|type: feature / area: db|critical|
+|GH-011|rag_documents Schemaを作成する|type: feature / area: db|critical|
+|GH-012|rag_chunks Schemaを作成する|type: feature / area: db|critical|
+|GH-013|rag_embeddings Schemaを作成する|type: feature / area: db|critical|
+|GH-014|Prisma Migrationを作成する|type: feature / area: db|critical|
+|GH-015|Document登録Serviceを実装する|type: feature / area: ingestion|high|
+|GH-016|Chunk分割Serviceを実装する|type: feature / area: indexing|critical|
+|GH-017|Metadata付与処理を実装する|type: feature / area: indexing|critical|
+|GH-018|Embedding Adapter Interfaceを定義する|type: feature / area: llm-provider|critical|
+|GH-019|OpenAI Embedding実装を追加する|type: feature / area: llm-provider|critical|
+|GH-020|pgvector保存処理を実装する|type: feature / area: indexing|critical|
+
+---
+
+## **7.4 M3: RAG Core MVP**
+
+|**Issue ID**|**Issue名**|**Label**|**優先度**|
+|---|---|---|---|
+|GH-021|Semantic Searchを実装する|type: feature / area: retrieval|critical|
+|GH-022|Metadata Filterを実装する|type: feature / area: retrieval|critical|
+|GH-023|Reranking処理を実装する|type: feature / area: retrieval|high|
+|GH-024|LLM Provider Interfaceを定義する|type: feature / area: llm-provider|critical|
+|GH-025|OpenAI LLM Adapterを実装する|type: feature / area: llm-provider|critical|
+|GH-026|Provider Usage Logを実装する|type: feature / area: audit|high|
+|GH-027|RAG Orchestratorを実装する|type: feature / area: rag-core|critical|
+|GH-028|POST /api/v1/rag/query を実装する|type: feature / area: api|critical|
+|GH-029|POST /api/v1/rag/bot-context を実装する|type: feature / area: api|critical|
+|GH-030|POST /api/v1/rag/similar-cases を実装する|type: feature / area: api|high|
+|GH-031|GET /api/v1/rag/history を実装する|type: feature / area: api|high|
+
+---
+
+## **7.5 M4: Guardrail MVP**
+
+|**Issue ID**|**Issue名**|**Label**|**優先度**|
+|---|---|---|---|
+|GH-032|Output JSON Schema Validationを実装する|type: security / area: guardrail|critical|
+|GH-033|order_permission=false強制処理を実装する|type: security / area: guardrail|critical|
+|GH-034|Prompt Injection検知を実装する|type: security / area: guardrail|critical|
+|GH-035|Secret Maskingを実装する|type: security / area: guardrail|critical|
+|GH-036|禁止表現検知を実装する|type: security / area: guardrail|critical|
+|GH-037|SSRF危険URL検知を実装する|type: security / area: guardrail|high|
+|GH-038|Guardrail Log保存を実装する|type: security / area: audit|high|
+|GH-039|RAGからOrder Serviceへ接続できないことを検証する|type: test / area: security|critical|
 
 ### 7.2.2 GH-009 Guardrail要件Issue分解結果
 
@@ -453,57 +503,6 @@ flowchart TD
 | Guardrail Log欠損         | 0件 |
 | Trading Engineへの影響      | 0件 |
 
-
----
-
-## **7.3 M2: Data Foundation**
-
-|**Issue ID**|**Issue名**|**Label**|**優先度**|
-|---|---|---|---|
-|GH-010|rag_sources Schemaを作成する|type: feature / area: db|critical|
-|GH-011|rag_documents Schemaを作成する|type: feature / area: db|critical|
-|GH-012|rag_chunks Schemaを作成する|type: feature / area: db|critical|
-|GH-013|rag_embeddings Schemaを作成する|type: feature / area: db|critical|
-|GH-014|Prisma Migrationを作成する|type: feature / area: db|critical|
-|GH-015|Document登録Serviceを実装する|type: feature / area: ingestion|high|
-|GH-016|Chunk分割Serviceを実装する|type: feature / area: indexing|critical|
-|GH-017|Metadata付与処理を実装する|type: feature / area: indexing|critical|
-|GH-018|Embedding Adapter Interfaceを定義する|type: feature / area: llm-provider|critical|
-|GH-019|OpenAI Embedding実装を追加する|type: feature / area: llm-provider|critical|
-|GH-020|pgvector保存処理を実装する|type: feature / area: indexing|critical|
-
----
-
-## **7.4 M3: RAG Core MVP**
-
-|**Issue ID**|**Issue名**|**Label**|**優先度**|
-|---|---|---|---|
-|GH-021|Semantic Searchを実装する|type: feature / area: retrieval|critical|
-|GH-022|Metadata Filterを実装する|type: feature / area: retrieval|critical|
-|GH-023|Reranking処理を実装する|type: feature / area: retrieval|high|
-|GH-024|LLM Provider Interfaceを定義する|type: feature / area: llm-provider|critical|
-|GH-025|OpenAI LLM Adapterを実装する|type: feature / area: llm-provider|critical|
-|GH-026|Provider Usage Logを実装する|type: feature / area: audit|high|
-|GH-027|RAG Orchestratorを実装する|type: feature / area: rag-core|critical|
-|GH-028|POST /api/v1/rag/query を実装する|type: feature / area: api|critical|
-|GH-029|POST /api/v1/rag/bot-context を実装する|type: feature / area: api|critical|
-|GH-030|POST /api/v1/rag/similar-cases を実装する|type: feature / area: api|high|
-|GH-031|GET /api/v1/rag/history を実装する|type: feature / area: api|high|
-
----
-
-## **7.5 M4: Guardrail MVP**
-
-|**Issue ID**|**Issue名**|**Label**|**優先度**|
-|---|---|---|---|
-|GH-032|Output JSON Schema Validationを実装する|type: security / area: guardrail|critical|
-|GH-033|order_permission=false強制処理を実装する|type: security / area: guardrail|critical|
-|GH-034|Prompt Injection検知を実装する|type: security / area: guardrail|critical|
-|GH-035|Secret Maskingを実装する|type: security / area: guardrail|critical|
-|GH-036|禁止表現検知を実装する|type: security / area: guardrail|critical|
-|GH-037|SSRF危険URL検知を実装する|type: security / area: guardrail|high|
-|GH-038|Guardrail Log保存を実装する|type: security / area: audit|high|
-|GH-039|RAGからOrder Serviceへ接続できないことを検証する|type: test / area: security|critical|
 
 ---
 
