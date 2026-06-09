@@ -21,3 +21,7 @@ pnpm-debug.log*
 
 tmp
 .temp
+
+docker/postgres/init/.*
+docker/redis/.*
+
