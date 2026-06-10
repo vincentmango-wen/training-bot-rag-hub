@@ -47,6 +47,17 @@ jobs:
       - name: Install API dependencies
         run: npm ci --prefix apps/api
 
+      # apps/api の typecheck/build/test は @prisma/client の生成物に依存するため、
+      # typecheck より前に prisma generate を走らせる必要がある。
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      # apps/api の tsconfig は @pmtp/shared を packages/shared/dist/index に解決する
+      # （src 直指定は rootDir 違反 / Stage2 基盤エージェント判断）。CI では shared dist が
+      # 未生成のため、typecheck より前に packages/shared を build する必要がある。
+      - name: Build shared package
+        run: npm --prefix packages/shared run build
+
       - name: Typecheck
         run: npm run typecheck
 

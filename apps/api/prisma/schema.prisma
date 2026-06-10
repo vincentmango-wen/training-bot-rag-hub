@@ -1,0 +1,492 @@
+// Training Bot RAG Hub — Prisma schema
+// 正本: docs/design_and_RD/05_DB_ER設計書.md（DB 正本 / v1.1 正本化 2026-06-10）
+//
+// 横断規約メモ（schema.prisma で表現できない制約は raw migration で管理 / 05 §9.4）:
+//   1. 部分 unique（WHERE idempotency_key IS NOT NULL）: rag_queries / rag_ingestion_jobs /
+//      rag_bot_contexts の (requester_id|source_id, idempotency_key) — raw SQL で作成（B1）。
+//   2. 複合 FK: rag_citations(retrieval_result_id, chunk_id) -> rag_retrieval_results(id, chunk_id)
+//      — raw SQL で作成（B2 / whitelist 物理強制）。
+//   3. embedding 列は型なし vector + CHECK(vector_dims(embedding)=dimension) — raw SQL（B6）。
+//   4. HNSW 部分式 index（provider/model/dimension 別）— raw SQL（05 §7.3）。
+//   5. order_permission の二次防御 CHECK(order_permission = false) — raw SQL（B3）。
+//   6. enum 値（source_type / query_type / risk_level / 各 status / bot_signal）の正本は
+//      packages/shared/src/rag-enums.ts（TS as const + Zod）。DB 側は varchar 保持。
+//   7. 金融数値（price/qty/drawdown 等）は JSONB 内 string。検索スコアは numeric 可（05 §2.4.5）。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ===========================================================================
+// コアテーブル（取込・Indexing）
+// ===========================================================================
+
+/// rag_sources — データソース管理（05 §5.1）
+model RagSource {
+  id               String    @id @default(uuid()) @db.Uuid
+  sourceType       String    @map("source_type") @db.VarChar(50) // enum 正本: shared SOURCE_TYPES
+  sourceName       String    @map("source_name") @db.VarChar(100)
+  displayName      String    @map("display_name") @db.VarChar(200)
+  description      String?   @db.Text
+  baseUrl          String?   @map("base_url") @db.Text
+  reliabilityScore Decimal   @map("reliability_score") @db.Decimal(5, 4) // CHECK 0..1（raw migration）
+  defaultLanguage  String?   @map("default_language") @db.VarChar(10)
+  fetchPolicy      Json?     @map("fetch_policy")
+  status           String    @db.VarChar(30) // enum 正本: shared SOURCE_STATUSES
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  documents        RagDocument[]
+  scores           RagSourceScore[]
+  chunks           RagChunk[]
+  ingestionJobs    RagIngestionJob[]
+  retrievalResults RagRetrievalResult[]
+  citations        RagCitation[]
+
+  @@unique([sourceType, sourceName])
+  @@index([sourceType, status])
+  @@map("rag_sources")
+}
+
+/// rag_source_scores — ソース信頼度スコア履歴（05 §5.2）
+model RagSourceScore {
+  id               String   @id @default(uuid()) @db.Uuid
+  sourceId         String   @map("source_id") @db.Uuid
+  reliabilityScore Decimal  @map("reliability_score") @db.Decimal(5, 4)
+  recencyScore     Decimal  @map("recency_score") @db.Decimal(5, 4)
+  noiseScore       Decimal? @map("noise_score") @db.Decimal(5, 4)
+  biasScore        Decimal? @map("bias_score") @db.Decimal(5, 4)
+  evaluationReason String?  @map("evaluation_reason") @db.Text
+  evaluatedAt      DateTime @map("evaluated_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  source RagSource @relation(fields: [sourceId], references: [id])
+
+  @@index([sourceId])
+  @@map("rag_source_scores")
+}
+
+/// rag_documents — 原文・正規化済み文書（05 §5.3）
+model RagDocument {
+  id                String    @id @default(uuid()) @db.Uuid
+  sourceId          String    @map("source_id") @db.Uuid
+  externalId        String?   @map("external_id") @db.VarChar(255)
+  documentType      String    @map("document_type") @db.VarChar(50)
+  title             String?   @db.Text
+  rawContent        String    @map("raw_content") @db.Text
+  normalizedContent String    @map("normalized_content") @db.Text
+  summary           String?   @db.Text
+  language          String    @db.VarChar(10)
+  sourceUrl         String?   @map("source_url") @db.Text
+  contentHash       String    @map("content_hash") @db.VarChar(64)
+  metadata          Json
+  eventTime         DateTime? @map("event_time") @db.Timestamptz(6)
+  ingestedAt        DateTime  @default(now()) @map("ingested_at") @db.Timestamptz(6)
+  status            String    @db.VarChar(30) // enum 正本: shared DOCUMENT_STATUSES
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  source           RagSource             @relation(fields: [sourceId], references: [id])
+  chunks           RagChunk[]
+  ingestionItems   RagIngestionJobItem[]
+  retrievalResults RagRetrievalResult[]
+  citations        RagCitation[]
+
+  @@unique([sourceId, contentHash])
+  @@index([sourceId, status])
+  @@index([eventTime])
+  @@index([contentHash])
+  @@map("rag_documents")
+}
+
+/// rag_chunks — 検索単位チャンク（05 §5.4）
+model RagChunk {
+  id          String    @id @default(uuid()) @db.Uuid
+  documentId  String    @map("document_id") @db.Uuid
+  sourceId    String    @map("source_id") @db.Uuid // 非正規化（join 段数削減 / B5・B7）
+  chunkIndex  Int       @map("chunk_index")
+  content     String    @db.Text
+  contentHash String    @map("content_hash") @db.VarChar(64)
+  tokenCount  Int?      @map("token_count")
+  metadata    Json
+  sourceType  String    @map("source_type") @db.VarChar(50) // 検索高速化用冗長カラム
+  symbol      String?   @db.VarChar(30)
+  market      String?   @db.VarChar(30)
+  timeframe   String?   @db.VarChar(20)
+  eventTime   DateTime? @map("event_time") @db.Timestamptz(6)
+  ingestedAt  DateTime  @default(now()) @map("ingested_at") @db.Timestamptz(6) // recency 基準時刻
+  language    String    @db.VarChar(10)
+  riskTags    String[]  @map("risk_tags")
+  status      String    @db.VarChar(30) // enum 正本: shared CHUNK_STATUSES（ACTIVE/QUARANTINED/DISABLED）
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  document         RagDocument          @relation(fields: [documentId], references: [id])
+  source           RagSource            @relation(fields: [sourceId], references: [id])
+  embeddings       RagEmbedding[]
+  retrievalResults RagRetrievalResult[]
+  citations        RagCitation[]
+
+  @@unique([documentId, chunkIndex])
+  @@unique([documentId, contentHash])
+  @@index([documentId, chunkIndex])
+  @@index([symbol, timeframe])
+  @@index([eventTime])
+  @@index([sourceType])
+  @@map("rag_chunks")
+}
+
+/// rag_embeddings — Embedding 保存（05 §5.5）
+/// embedding 列は型なし vector。Prisma では Unsupported("vector")。
+/// CHECK(vector_dims(embedding)=dimension) と HNSW 部分式 index は raw migration（B6 / 05 §7.3）。
+model RagEmbedding {
+  id           String                @id @default(uuid()) @db.Uuid
+  chunkId      String                @map("chunk_id") @db.Uuid
+  provider     String                @db.VarChar(50)
+  model        String                @db.VarChar(100)
+  dimension    Int
+  embedding    Unsupported("vector")
+  contentHash  String                @map("content_hash") @db.VarChar(64)
+  status       String                @db.VarChar(30) // enum 正本: shared EMBEDDING_STATUSES
+  errorMessage String?               @map("error_message") @db.Text
+  embeddedAt   DateTime              @map("embedded_at") @db.Timestamptz(6)
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  chunk RagChunk @relation(fields: [chunkId], references: [id])
+
+  @@unique([chunkId, provider, model])
+  @@map("rag_embeddings")
+}
+
+/// rag_ingestion_jobs — 取込ジョブ（05 §5.6）
+/// 部分 unique (source_id, idempotency_key) WHERE idempotency_key IS NOT NULL は raw migration（B1）。
+model RagIngestionJob {
+  id             String    @id @default(uuid()) @db.Uuid
+  sourceId       String    @map("source_id") @db.Uuid
+  jobType        String    @map("job_type") @db.VarChar(50)
+  status         String    @db.VarChar(30) // enum 正本: shared INGESTION_STATUSES
+  startedAt      DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt     DateTime? @map("finished_at") @db.Timestamptz(6)
+  totalCount     Int       @default(0) @map("total_count")
+  successCount   Int       @default(0) @map("success_count")
+  failedCount    Int       @default(0) @map("failed_count")
+  errorMessage   String?   @map("error_message") @db.Text
+  idempotencyKey String?   @map("idempotency_key") @db.Text
+  payloadHash    String?   @map("payload_hash") @db.VarChar(64)
+  traceId        String    @map("trace_id") @db.VarChar(100)
+  requestId      String    @map("request_id") @db.VarChar(100)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  source RagSource             @relation(fields: [sourceId], references: [id])
+  items  RagIngestionJobItem[]
+
+  @@index([sourceId, status])
+  @@map("rag_ingestion_jobs")
+}
+
+/// rag_ingestion_job_items — 取込ジョブ明細（05 §5.7）
+model RagIngestionJobItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  jobId        String   @map("job_id") @db.Uuid
+  documentId   String?  @map("document_id") @db.Uuid
+  externalId   String?  @map("external_id") @db.VarChar(255)
+  status       String   @db.VarChar(30) // enum 正本: shared INGESTION_ITEM_STATUSES
+  errorMessage String?  @map("error_message") @db.Text
+  rawPayload   Json?    @map("raw_payload")
+  traceId      String   @map("trace_id") @db.VarChar(100)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  job      RagIngestionJob @relation(fields: [jobId], references: [id])
+  document RagDocument?    @relation(fields: [documentId], references: [id])
+
+  @@index([jobId])
+  @@map("rag_ingestion_job_items")
+}
+
+// ===========================================================================
+// RAG 実行・監査テーブル
+// ===========================================================================
+
+/// rag_queries — RAG 問い合わせ履歴（05 §5.8）
+/// 部分 unique (requester_id, idempotency_key) WHERE idempotency_key IS NOT NULL は raw migration（B1）。
+model RagQuery {
+  id             String   @id @default(uuid()) @db.Uuid
+  requesterId    String   @map("requester_id") @db.Uuid // 冪等性スコープ（bot/UI 吸収）
+  userId         String?  @map("user_id") @db.Uuid
+  botId          String?  @map("bot_id") @db.Uuid
+  strategyId     String?  @map("strategy_id") @db.Uuid
+  idempotencyKey String?  @map("idempotency_key") @db.Text
+  payloadHash    String?  @map("payload_hash") @db.VarChar(64)
+  queryType      String   @map("query_type") @db.VarChar(50) // enum 正本: shared QUERY_TYPES
+  queryText      String   @map("query_text") @db.Text
+  symbol         String?  @db.VarChar(30)
+  market         String?  @db.VarChar(30)
+  timeframe      String?  @db.VarChar(20)
+  sourceTypes    String[] @map("source_types")
+  filters        Json
+  features       Json?
+  providerPolicy String   @map("provider_policy") @db.VarChar(100)
+  status         String   @db.VarChar(30) // enum 正本: shared QUERY_STATUSES
+  traceId        String   @map("trace_id") @db.VarChar(100)
+  requestId      String   @map("request_id") @db.VarChar(100)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  retrievalResults RagRetrievalResult[]
+  responses        RagResponse[]
+  guardrailResults RagGuardrailResult[]
+  providerCalls    RagProviderCall[]
+  botContexts      RagBotContext[]
+
+  @@index([traceId])
+  @@index([botId, createdAt(sort: Desc)])
+  @@map("rag_queries")
+}
+
+/// rag_retrieval_results — 検索結果履歴（05 §5.9）
+/// unique(id, chunk_id) は rag_citations 複合 FK の参照先（B2）。raw migration で追加。
+model RagRetrievalResult {
+  id              String   @id @default(uuid()) @db.Uuid
+  queryId         String   @map("query_id") @db.Uuid
+  chunkId         String   @map("chunk_id") @db.Uuid
+  documentId      String   @map("document_id") @db.Uuid
+  sourceId        String   @map("source_id") @db.Uuid
+  rankOrder       Int      @map("rank_order")
+  similarityScore Decimal? @map("similarity_score") @db.Decimal(8, 6)
+  keywordScore    Decimal? @map("keyword_score") @db.Decimal(8, 6)
+  rerankScore     Decimal? @map("rerank_score") @db.Decimal(8, 6)
+  recencyScore    Decimal? @map("recency_score") @db.Decimal(8, 6) // 検索時動的計算のスナップショット（B5）
+  finalScore      Decimal? @map("final_score") @db.Decimal(8, 6) // 合成スコアのスナップショット（B5）
+  usedInAnswer    Boolean  @map("used_in_answer")
+  retrievalReason String?  @map("retrieval_reason") @db.Text
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  query    RagQuery    @relation(fields: [queryId], references: [id])
+  chunk    RagChunk    @relation(fields: [chunkId], references: [id])
+  document RagDocument @relation(fields: [documentId], references: [id])
+  source   RagSource   @relation(fields: [sourceId], references: [id])
+  // rag_citations への back-relation は Prisma に持たせない:
+  // citation 側は複合 FK (retrieval_result_id, chunk_id) -> (id, chunk_id) を raw migration で張るため、
+  // Prisma の単一カラム relation を定義すると phantom 列 + 重複 FK が生成される（B2 / whitelist 物理強制）。
+
+  @@unique([queryId, chunkId])
+  // unique(id, chunk_id) は raw migration で追加（複合 FK 参照先 / Prisma の @@id が id 単独のため）
+  @@map("rag_retrieval_results")
+}
+
+/// rag_responses — RAG 回答履歴（05 §5.10）
+/// CHECK(confidence 0..1) / CHECK(order_permission = false) は raw migration（二次防御 / B3）。
+model RagResponse {
+  id                String   @id @default(uuid()) @db.Uuid
+  queryId           String   @map("query_id") @db.Uuid
+  summary           String   @db.Text
+  responseJson      Json     @map("response_json")
+  supportingFactors Json?    @map("supporting_factors")
+  opposingFactors   Json?    @map("opposing_factors")
+  similarCases      Json?    @map("similar_cases")
+  riskLevel         String   @map("risk_level") @db.VarChar(20) // enum 正本: shared RISK_LEVELS
+  confidence        Decimal  @db.Decimal(5, 4)
+  orderPermission   Boolean  @default(false) @map("order_permission") // 常に false（CHECK は raw migration）
+  warningMessage    String?  @map("warning_message") @db.Text
+  status            String   @db.VarChar(30) // enum 正本: shared RESPONSE_STATUSES
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  query            RagQuery             @relation(fields: [queryId], references: [id])
+  citations        RagCitation[]
+  guardrailResults RagGuardrailResult[]
+  providerCalls    RagProviderCall[]
+  botContexts      RagBotContext[]
+
+  @@index([queryId])
+  @@map("rag_responses")
+}
+
+/// rag_citations — 回答に使った引用（05 §5.11）
+/// 複合 FK (retrieval_result_id, chunk_id) -> rag_retrieval_results(id, chunk_id) は
+/// raw migration（B2 / whitelist 物理強制）。
+model RagCitation {
+  id                String    @id @default(uuid()) @db.Uuid
+  responseId        String    @map("response_id") @db.Uuid
+  retrievalResultId String    @map("retrieval_result_id") @db.Uuid // NOT NULL（whitelist 物理強制 / B2）
+  sourceId          String    @map("source_id") @db.Uuid
+  documentId        String    @map("document_id") @db.Uuid
+  chunkId           String    @map("chunk_id") @db.Uuid
+  citationOrder     Int       @map("citation_order")
+  title             String?   @db.Text
+  sourceUrl         String?   @map("source_url") @db.Text
+  usedReason        String    @map("used_reason") @db.Text
+  excerpt           String    @db.Text // 引用箇所スナップショット（B2）
+  similarityScore   Decimal?  @map("similarity_score") @db.Decimal(8, 6)
+  rerankScore       Decimal?  @map("rerank_score") @db.Decimal(8, 6)
+  eventTime         DateTime? @map("event_time") @db.Timestamptz(6)
+  ingestedAt        DateTime? @map("ingested_at") @db.Timestamptz(6)
+  qualityStatus     String    @map("quality_status") @db.VarChar(30) // enum 正本: shared CITATION_QUALITY_STATUSES
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  response RagResponse @relation(fields: [responseId], references: [id])
+  source   RagSource   @relation(fields: [sourceId], references: [id])
+  document RagDocument @relation(fields: [documentId], references: [id])
+  chunk    RagChunk    @relation(fields: [chunkId], references: [id])
+  // retrievalResult への参照は複合 FK (retrieval_result_id, chunk_id) -> rag_retrieval_results(id, chunk_id)
+  // を raw migration で張る（B2 / whitelist 物理強制）。Prisma の単一カラム relation を定義すると
+  // phantom 列 + 重複 FK が生成されるため、ここには relation を持たせない。
+
+  @@unique([responseId, citationOrder])
+  @@index([retrievalResultId])
+  @@map("rag_citations")
+}
+
+/// rag_guardrail_results — ガードレール検証結果（05 §5.12）
+model RagGuardrailResult {
+  id            String   @id @default(uuid()) @db.Uuid
+  queryId       String   @map("query_id") @db.Uuid
+  responseId    String?  @map("response_id") @db.Uuid
+  guardrailType String   @map("guardrail_type") @db.VarChar(50) // enum 正本: shared GUARDRAIL_TYPES
+  status        String   @db.VarChar(30) // enum 正本: shared GUARDRAIL_STATUSES
+  severity      String   @db.VarChar(20) // enum 正本: shared RISK_LEVELS
+  detectedItems Json?    @map("detected_items")
+  reason        String?  @db.Text
+  blocked       Boolean
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  query    RagQuery     @relation(fields: [queryId], references: [id])
+  response RagResponse? @relation(fields: [responseId], references: [id])
+
+  @@index([queryId])
+  @@map("rag_guardrail_results")
+}
+
+/// rag_bot_contexts — Bot 参照文脈（05 §5.13）
+/// 部分 unique (requester_id, idempotency_key) と CHECK(order_permission = false) は raw migration（B1/B3）。
+model RagBotContext {
+  id              String   @id @default(uuid()) @db.Uuid
+  requesterId     String   @map("requester_id") @db.Uuid
+  botId           String   @map("bot_id") @db.Uuid
+  strategyId      String?  @map("strategy_id") @db.Uuid
+  idempotencyKey  String?  @map("idempotency_key") @db.Text
+  payloadHash     String?  @map("payload_hash") @db.VarChar(64)
+  queryId         String   @map("query_id") @db.Uuid
+  responseId      String   @map("response_id") @db.Uuid
+  symbol          String?  @db.VarChar(30)
+  timeframe       String?  @db.VarChar(20)
+  botSignal       String?  @map("bot_signal") @db.VarChar(20) // enum 正本: shared BOT_SIGNALS
+  features        Json?
+  contextJson     Json     @map("context_json")
+  orderPermission Boolean  @default(false) @map("order_permission") // 常に false（CHECK は raw migration）
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  query    RagQuery    @relation(fields: [queryId], references: [id])
+  response RagResponse @relation(fields: [responseId], references: [id])
+
+  @@index([botId, createdAt(sort: Desc)])
+  @@map("rag_bot_contexts")
+}
+
+// ===========================================================================
+// Provider 管理テーブル
+// ===========================================================================
+
+/// rag_provider_policies — Provider 選択 Policy（05 §5.14）
+model RagProviderPolicy {
+  id               String   @id @default(uuid()) @db.Uuid
+  policyName       String   @map("policy_name") @db.VarChar(100)
+  taskType         String   @map("task_type") @db.VarChar(50)
+  primaryProvider  String   @map("primary_provider") @db.VarChar(50)
+  primaryModel     String   @map("primary_model") @db.VarChar(100)
+  fallbackProvider String?  @map("fallback_provider") @db.VarChar(50)
+  fallbackModel    String?  @map("fallback_model") @db.VarChar(100)
+  maxInputTokens   Int?     @map("max_input_tokens")
+  maxOutputTokens  Int?     @map("max_output_tokens")
+  maxEstimatedCost Decimal? @map("max_estimated_cost") @db.Decimal(12, 6)
+  enabled          Boolean
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  providerCalls RagProviderCall[]
+
+  @@map("rag_provider_policies")
+}
+
+/// rag_provider_calls — Provider 呼び出し履歴（05 §5.15）
+model RagProviderCall {
+  id                 String    @id @default(uuid()) @db.Uuid
+  queryId            String?   @map("query_id") @db.Uuid
+  responseId         String?   @map("response_id") @db.Uuid
+  providerPolicyId   String?   @map("provider_policy_id") @db.Uuid
+  provider           String    @db.VarChar(50)
+  model              String    @db.VarChar(100)
+  callType           String    @map("call_type") @db.VarChar(50) // enum 正本: shared PROVIDER_CALL_TYPES
+  status             String    @db.VarChar(30) // enum 正本: shared PROVIDER_CALL_STATUSES
+  fallbackUsed       Boolean   @map("fallback_used")
+  fallbackFromCallId String?   @map("fallback_from_call_id") @db.Uuid
+  requestHash        String?   @map("request_hash") @db.VarChar(64)
+  responseHash       String?   @map("response_hash") @db.VarChar(64)
+  startedAt          DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt         DateTime? @map("finished_at") @db.Timestamptz(6)
+  traceId            String    @map("trace_id") @db.VarChar(100)
+  requestId          String    @map("request_id") @db.VarChar(100)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  query     RagQuery?             @relation(fields: [queryId], references: [id])
+  response  RagResponse?          @relation(fields: [responseId], references: [id])
+  policy    RagProviderPolicy?    @relation(fields: [providerPolicyId], references: [id])
+  usageLogs RagProviderUsageLog[]
+  errors    RagProviderError[]
+
+  @@index([traceId])
+  @@map("rag_provider_calls")
+}
+
+/// rag_provider_usage_logs — token / cost / latency 記録（05 §5.16）
+model RagProviderUsageLog {
+  id               String   @id @default(uuid()) @db.Uuid
+  providerCallId   String   @map("provider_call_id") @db.Uuid
+  provider         String   @db.VarChar(50)
+  model            String   @db.VarChar(100)
+  inputTokens      Int      @map("input_tokens")
+  outputTokens     Int      @map("output_tokens")
+  totalTokens      Int      @map("total_tokens")
+  estimatedCostUsd Decimal  @map("estimated_cost_usd") @db.Decimal(12, 6)
+  latencyMs        Int      @map("latency_ms")
+  queryType        String?  @map("query_type") @db.VarChar(50)
+  botId            String?  @map("bot_id") @db.Uuid
+  traceId          String   @map("trace_id") @db.VarChar(100)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  providerCall RagProviderCall @relation(fields: [providerCallId], references: [id])
+
+  @@index([createdAt(sort: Desc)])
+  @@index([provider, model, createdAt(sort: Desc)])
+  @@map("rag_provider_usage_logs")
+}
+
+/// rag_provider_errors — Provider エラー / Fallback 履歴（05 §5.17）
+model RagProviderError {
+  id                String   @id @default(uuid()) @db.Uuid
+  providerCallId    String   @map("provider_call_id") @db.Uuid
+  provider          String   @db.VarChar(50)
+  model             String?  @db.VarChar(100)
+  errorType         String   @map("error_type") @db.VarChar(50) // enum 正本: shared PROVIDER_ERROR_TYPES
+  errorCode         String?  @map("error_code") @db.VarChar(100)
+  errorMessage      String   @map("error_message") @db.Text
+  retryable         Boolean
+  fallbackTriggered Boolean  @map("fallback_triggered")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  providerCall RagProviderCall @relation(fields: [providerCallId], references: [id])
+
+  @@index([providerCallId])
+  @@map("rag_provider_errors")
+}

@@ -3,6 +3,9 @@
   "rootDir": "..",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
+  "moduleNameMapper": {
+    "^@pmtp/shared$": "<rootDir>/../../packages/shared/dist/index.js"
+  },
   "transform": {
     "^.+\\.(t|j)s$": [
       "ts-jest",

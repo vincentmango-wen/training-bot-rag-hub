@@ -21,6 +21,10 @@
     "docker:logs": "docker compose logs -f",
     "docker:ps": "docker compose ps",
     "db:psql": "docker compose exec postgres psql -U rag_user -d rag_hub",
+    "db:migrate": "npm --prefix apps/api run prisma:migrate:dev",
+    "db:migrate:deploy": "npm --prefix apps/api run prisma:migrate:deploy",
+    "db:migrate:status": "npm --prefix apps/api run prisma:migrate:status",
+    "db:generate": "npm --prefix apps/api run prisma:generate",
     "redis:cli": "docker compose exec redis redis-cli"
   },
   "devDependencies": {

@@ -5,8 +5,18 @@
       "rootDir": "./src",
       "types": ["node"],
       "experimentalDecorators": true,
-      "emitDecoratorMetadata": true
+      "emitDecoratorMetadata": true,
+      "baseUrl": ".",
+      "paths": {
+        "@pmtp/shared": ["../../packages/shared/dist/index"]
+      }
     },
     "include": ["src/**/*.ts"],
-    "exclude": ["node_modules", "dist", "test"]
+    "exclude": [
+      "node_modules",
+      "dist",
+      "test",
+      "src/**/*.spec.ts",
+      "src/**/__tests__/**"
+    ]
   }
