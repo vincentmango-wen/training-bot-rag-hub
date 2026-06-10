@@ -25,3 +25,8 @@ tmp
 docker/postgres/init/.*
 docker/redis/.*
 
+# Stage オーケストレーション workflow（PR に含めない / リポルート残留物）
+.stage2-workflow.mjs
+.stage3-fix-workflow.mjs
+.stage4-testfix-workflow.mjs
+

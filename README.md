@@ -152,6 +152,62 @@ npm run docker:reset
 注意: docker:reset はローカルDBデータを削除します。必要な検証データがある場合は実行前に退避してください。
 
 
+## DB マイグレーション（Prisma + pgvector）
+
+RAG 基盤の DB スキーマは Prisma で管理します。正本設計書は `docs/design_and_RD/05_DB_ER設計書.md` です。
+
+### 環境変数
+
+`apps/api/.env` に DB 接続情報を記入します（`apps/api/.env.example` をコピー）。
+
+```bash
+cp apps/api/.env.example apps/api/.env
+```
+
+`DATABASE_URL` / `DIRECT_URL` は `?schema=public` を使います。pgvector 拡張は `public`
+に常駐し、`vector` 型・演算子が search_path に解決されるためです（`$queryRaw` の ANN 検索に必須）。
+`order_permission` の一次防御は DB ロールの GRANT 物理遮断であり、schema 分離には依存しません
+（05 §2.4.3 / §12.1）。
+
+### 初回マイグレーション適用
+
+DB（docker postgres）が起動している状態で実行します。
+
+```bash
+npm run docker:up        # postgres（pgvector 同梱）+ redis を起動
+npm run db:migrate:deploy # prisma migrate deploy（既存マイグレーションを適用）
+npm run db:generate      # Prisma Client を生成（build/typecheck で自動実行されない場合）
+```
+
+新しいマイグレーションを作成する場合（スキーマ変更時）:
+
+```bash
+npm run db:migrate       # prisma migrate dev（差分マイグレーション生成 + 適用）
+npm run db:migrate:status # 適用状況を確認
+```
+
+### Prisma で表現できない制約（raw SQL 管理）
+
+以下は `prisma/migrations/00000000000000_init/migration.sql` 内の「[B] raw SQL 制約」
+セクションで管理しています（schema.prisma にはコメントで存在を明記 / 05 §9.4）。
+
+- pgvector 拡張 + `embedding` 列の dimension 整合 `CHECK(vector_dims(embedding)=dimension)`（B6）
+- HNSW 部分式 index（provider/model/dimension 別 / 新 embedding model 採用時は 1 行追加 / 05 §7.3）
+- 部分 unique（`WHERE idempotency_key IS NOT NULL` / 二重課金・二重実行の物理遮断 / B1）
+- 複合 FK `rag_citations(retrieval_result_id, chunk_id) -> rag_retrieval_results(id, chunk_id)`
+  による citation whitelist 物理強制（捏造 citation を INSERT 不能にする / B2）
+- `order_permission = false` の二次防御 `CHECK`（B3）/ スコア値域 `CHECK(0..1)`
+
+スキーマ変更で新しい部分 unique・複合 FK・vector index を追加する場合は、`prisma migrate dev`
+が生成した `migration.sql` に手動で raw SQL を追記してください（Prisma は再生成しません）。
+
+### enum SSoT
+
+`source_type` / `query_type` / `BotSignal` / `risk_level` / 各 status は
+`packages/shared/src/rag-enums.ts` に `as const` + Zod schema で 1 箇所定義します。
+DB 側は `varchar` 保持です。値リテラルを各所で再宣言しないでください。
+
+
 ## 開発起動
 ```
 npm run dev

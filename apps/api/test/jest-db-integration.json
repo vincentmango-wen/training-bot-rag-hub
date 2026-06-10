@@ -1,0 +1,18 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testRegex": "test/db-constraints\\.integration-spec\\.ts$",
+  "moduleNameMapper": {
+    "^@pmtp/shared$": "<rootDir>/../../packages/shared/dist/index.js"
+  },
+  "transform": {
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": "tsconfig.spec.json"
+      }
+    ]
+  },
+  "testTimeout": 30000
+}
