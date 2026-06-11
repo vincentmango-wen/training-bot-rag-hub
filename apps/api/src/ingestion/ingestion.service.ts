@@ -388,6 +388,13 @@ export class IngestionService {
       }
 
       return { documentId, reusedEmbeddingCount, newEmbeddingCount }
+    }, {
+      // embedding API 呼び出し (OpenAI) を含むため Prisma 既定 5 秒では足りない。
+      // Neon cold start (~500ms) + embedding HTTP (数百 ms 〜 数秒) + 複数 chunk 書き込み
+      // を許容するため余裕を持って 60 秒に拡張。長期的には embedding 呼び出しを
+      // transaction 外に出すリファクタが望ましい (別チケット)。
+      maxWait: 10_000,
+      timeout: 60_000,
     })
   }
 

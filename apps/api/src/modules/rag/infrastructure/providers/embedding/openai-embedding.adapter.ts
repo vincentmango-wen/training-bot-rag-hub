@@ -117,15 +117,6 @@ export class OpenAIEmbeddingAdapter implements EmbeddingProvider {
       })
     }
     const status = extractStatus(err)
-    // DEBUG: 一時的に actual error を logs に吐く（diagnosis 後に revert すること）
-    // eslint-disable-next-line no-console
-    console.error('[OpenAI Embedding debug]', {
-      status,
-      message: err instanceof Error ? err.message : String(err),
-      name: err instanceof Error ? err.name : undefined,
-      code: (err as { code?: unknown })?.code,
-      type: (err as { type?: unknown })?.type,
-    })
     return new ProviderError({
       kind: status === 429 ? 'rate_limit' : 'api_error',
       provider: 'openai',
