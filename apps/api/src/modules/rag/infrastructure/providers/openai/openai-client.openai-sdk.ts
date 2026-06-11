@@ -18,11 +18,19 @@ import type {
   OpenAIEmbeddingResult,
 } from './openai-client.port'
 
+/** openai SDK v5+ の RequestOptions（必要分のみ抽出）。`signal` 等は body と分離して第 2 引数で渡す。 */
+interface OpenAiSdkRequestOptions {
+  signal?: AbortSignal
+}
+
 /** openai SDK の必要最小サーフェスのみを構造的に型付け（パッケージ型に非依存）。 */
 interface OpenAiSdkLike {
   chat: {
     completions: {
-      create(args: Record<string, unknown>): Promise<{
+      create(
+        args: Record<string, unknown>,
+        options?: OpenAiSdkRequestOptions,
+      ): Promise<{
         model: string
         choices: Array<{
           message: { content: string | null }
@@ -33,7 +41,10 @@ interface OpenAiSdkLike {
     }
   }
   embeddings: {
-    create(args: Record<string, unknown>): Promise<{
+    create(
+      args: Record<string, unknown>,
+      options?: OpenAiSdkRequestOptions,
+    ): Promise<{
       model: string
       data: Array<{ embedding: number[] }>
       usage?: { prompt_tokens?: number }
@@ -68,17 +79,21 @@ export class OpenAiSdkClient implements OpenAIClientPort {
   async createChatCompletion(
     params: OpenAIChatCompletionParams,
   ): Promise<OpenAIChatCompletionResult> {
-    const res = await this.sdk.chat.completions.create({
-      model: params.model,
-      messages: params.messages,
-      temperature: params.temperature,
-      seed: params.seed,
-      response_format: params.response_format,
-      ...(params.max_tokens !== undefined
-        ? { max_tokens: params.max_tokens }
-        : {}),
-      ...(params.signal !== undefined ? { signal: params.signal } : {}),
-    })
+    // openai SDK v5+ では signal は body ではなく第 2 引数 RequestOptions に渡す
+    // （v4 互換で body に混ぜると "400 Unrecognized request argument supplied: signal"）。
+    const res = await this.sdk.chat.completions.create(
+      {
+        model: params.model,
+        messages: params.messages,
+        temperature: params.temperature,
+        seed: params.seed,
+        response_format: params.response_format,
+        ...(params.max_tokens !== undefined
+          ? { max_tokens: params.max_tokens }
+          : {}),
+      },
+      params.signal !== undefined ? { signal: params.signal } : undefined,
+    )
     const choice = res.choices[0]
     return {
       content: choice?.message.content ?? '',
@@ -96,11 +111,14 @@ export class OpenAiSdkClient implements OpenAIClientPort {
   async createEmbeddings(
     params: OpenAIEmbeddingParams,
   ): Promise<OpenAIEmbeddingResult> {
-    const res = await this.sdk.embeddings.create({
-      model: params.model,
-      input: params.input,
-      ...(params.signal !== undefined ? { signal: params.signal } : {}),
-    })
+    // openai SDK v5+ では signal は body ではなく第 2 引数 RequestOptions に渡す。
+    const res = await this.sdk.embeddings.create(
+      {
+        model: params.model,
+        input: params.input,
+      },
+      params.signal !== undefined ? { signal: params.signal } : undefined,
+    )
     return {
       embeddings: res.data.map((d) => d.embedding),
       model: res.model,
