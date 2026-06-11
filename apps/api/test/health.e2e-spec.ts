@@ -7,8 +7,15 @@ import { OPENAI_CLIENT } from '../src/modules/rag/infrastructure/providers/opena
 
 describe('HealthController', () => {
   let app: INestApplication
+  // Phase 3: APP_GUARD 導入 → /health も Bearer Token 必須。
+  // e2e 環境にトークンを注入し、リクエストにヘッダを付与する。
+  const TEST_BEARER_TOKEN = 'test-bearer-token-for-health-e2e'
+  let originalBearerToken: string | undefined
 
   beforeAll(async () => {
+    originalBearerToken = process.env.API_BEARER_TOKEN
+    process.env.API_BEARER_TOKEN = TEST_BEARER_TOKEN
+
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -26,11 +33,17 @@ describe('HealthController', () => {
 
   afterAll(async () => {
     await app.close()
+    if (originalBearerToken === undefined) {
+      delete process.env.API_BEARER_TOKEN
+    } else {
+      process.env.API_BEARER_TOKEN = originalBearerToken
+    }
   })
 
   it('GET /health returns ok', async () => {
     await request(app.getHttpServer())
       .get('/health')
+      .set('Authorization', `Bearer ${TEST_BEARER_TOKEN}`)
       .expect(200)
       .expect({
         status: 'ok',

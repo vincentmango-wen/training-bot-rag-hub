@@ -244,6 +244,40 @@ Branch例:
 feature/gh-001-repository-setup
 ```
 
+## Ingestion（ローカル CLI 経由）
+
+ドキュメント取込・embedding 生成は Vercel に載せず、ローカル CLI で実行する（Phase 4）。
+
+```bash
+# 通常実行（.md / .txt をディレクトリ再帰取込）
+npm run ingest -- ./docs/strategy --source-type strategy_doc
+
+# 課金ゼロ・DB 書込ゼロでの事前検証
+npm run ingest -- ./docs/strategy --dry-run
+```
+
+- 既存 `IngestionService`（claim-first / content_hash 差分 / 1 文書 1 トランザクション）を Nest standalone context で再利用
+- DIRECT_URL があれば DATABASE_URL を自動上書きし、Neon の Direct 接続経由で書き込む
+- 同一入力の再実行は冪等 replay（embedding 課金ゼロ / DB 書込ゼロ）
+- 詳細手順・容量監視・トラブルシュート: [`docs/operations/ingestion-runbook.md`](docs/operations/ingestion-runbook.md)
+
+## PTP 側切替（cutover）
+
+PTP（Personal Multi Trading Platform）側 RAG クライアントの参照先を、ローカル docker から
+Vercel Production URL へ切り替える手順は [`docs/operations/ptp-client-cutover.md`](docs/operations/ptp-client-cutover.md) を参照してください。
+
+- env 変更 / クライアントコード調整 / 疎通確認 / 切り戻しまでを単独完走できる手順書
+- 疎通確認は [`docs/operations/cutover-smoke-test.sh`](docs/operations/cutover-smoke-test.sh) を使用（既定は read-only / LLM 課金ゼロ）
+- LLM 経路まで end-to-end で確認したい場合は `--with-query` フラグ（24h 内の再実行は replay = 再課金なし）
+
+```bash
+# read-only（LLM 課金ゼロ / 何度でも気軽に再実行可）
+bash docs/operations/cutover-smoke-test.sh
+
+# LLM 経路まで（固定 Idempotency-Key で replay）
+bash docs/operations/cutover-smoke-test.sh --with-query
+```
+
 ## 設計書
 
 | 文書 | パス | 対応Issue |

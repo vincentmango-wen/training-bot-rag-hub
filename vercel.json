@@ -1,0 +1,18 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "builds": [
+    {
+      "src": "apps/api/api/index.ts",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["apps/api/prisma/**", "packages/shared/dist/**"]
+      }
+    }
+  ],
+  "routes": [
+    { "src": "/health", "dest": "/apps/api/api/index.ts" },
+    { "src": "/api/v1/(.*)", "dest": "/apps/api/api/index.ts" },
+    { "src": "/(.*)", "dest": "/apps/api/api/index.ts" }
+  ]
+}

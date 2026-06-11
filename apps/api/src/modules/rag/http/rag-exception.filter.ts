@@ -13,6 +13,7 @@
  */
 import {
   Catch,
+  HttpException,
   Logger,
   type ArgumentsHost,
   type ExceptionFilter,
@@ -95,6 +96,26 @@ export class RagExceptionFilter implements ExceptionFilter {
       }
     }
 
+    // HttpException (UnauthorizedException / ServiceUnavailableException 等) は
+    // Guard / Pipe / NestJS 内部から throw されるため最優先で分岐する。
+    // ここを通さないと 401 / 403 / 503 等が全部 500 に潰され、smoke-test T2/T3 が
+    // 構造的に成立しない（Phase 3 quality / Phase 5 共通 deploy ブロッカー）。
+    if (exception instanceof HttpException) {
+      const httpStatus = exception.getStatus()
+      const response = exception.getResponse()
+      const message =
+        typeof response === 'string'
+          ? response
+          : (response as { message?: unknown }).message != null
+            ? String((response as { message?: unknown }).message)
+            : exception.message
+      return {
+        code: mapHttpStatusToErrorCode(httpStatus),
+        httpStatus,
+        message,
+      }
+    }
+
     if (exception instanceof ZodError || isZodErrorShaped(exception)) {
       return {
         code: 'RAG_VALIDATION_ERROR',
@@ -136,6 +157,41 @@ export class RagExceptionFilter implements ExceptionFilter {
       httpStatus: ERROR_CODE_HTTP_STATUS.RAG_INTERNAL_ERROR,
       message: 'Internal server error',
     }
+  }
+}
+
+/**
+ * HTTP status → ErrorCode 写像（NestJS HttpException 経由の例外用）。
+ *
+ * NestJS の Guard / Pipe / 内部から throw された HttpException を、共通 Error 形の
+ * code フィールドへ写像する。httpStatus は元の HttpException から保つ（401/403/503 等）。
+ *
+ * - 503 は ERROR_CODES に専用コードが無いため意味的に近い RAG_INTERNAL_ERROR に寄せる
+ *   （httpStatus は 503 を保つ / smoke-test の status 比較は通る）
+ * - 未知の status は RAG_INTERNAL_ERROR にフォールバック
+ */
+function mapHttpStatusToErrorCode(httpStatus: number): ErrorCode {
+  switch (httpStatus) {
+    case 400:
+      return 'RAG_VALIDATION_ERROR'
+    case 401:
+      return 'RAG_UNAUTHORIZED'
+    case 403:
+      return 'RAG_FORBIDDEN'
+    case 404:
+      return 'RAG_NOT_FOUND'
+    case 409:
+      return 'RAG_IDEMPOTENCY_CONFLICT'
+    case 422:
+      return 'RAG_GUARDRAIL_BLOCKED'
+    case 429:
+      return 'RAG_RATE_LIMITED'
+    case 502:
+      return 'RAG_PROVIDER_ERROR'
+    case 504:
+      return 'RAG_PROVIDER_TIMEOUT'
+    default:
+      return 'RAG_INTERNAL_ERROR'
   }
 }
 

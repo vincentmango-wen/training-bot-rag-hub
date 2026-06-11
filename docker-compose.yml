@@ -23,27 +23,8 @@ services:
     networks:
       - rag_local
 
-  redis:
-    image: redis:7.4-alpine
-    container_name: pmtp-rag-redis
-    restart: unless-stopped
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
-    ports:
-      - "${REDIS_HOST_PORT:-6380}:6379"
-    volumes:
-      - rag_redis_data:/data
-      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    networks:
-      - rag_local
-
 volumes:
   rag_postgres_data:
-  rag_redis_data:
 
 networks:
   rag_local:

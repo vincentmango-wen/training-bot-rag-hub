@@ -1,15 +1,10 @@
 import 'reflect-metadata'
-import { NestFactory } from '@nestjs/core'
-import { AppModule } from './app.module'
+import { createApp } from './create-app'
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, {
-    bufferLogs: true,
-  })
-
-  // RAG API は /api/v1 配下（10 §3.1 Base URL）。
-  // 既存のインフラ用 liveness `/health`（health.controller）は prefix 対象外として残す。
-  app.setGlobalPrefix('api/v1', { exclude: ['health'] })
+  // bootstrap 共通化: アプリ構成（global prefix 等）は createApp() に集約。
+  // 本ファイルはローカル listen 専用エントリ（Vercel serverless 側は apps/api/api/index.ts）。
+  const app = await createApp()
 
   const port = Number(process.env.PORT ?? 3000)
 

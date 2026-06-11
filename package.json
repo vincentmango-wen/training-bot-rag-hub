@@ -25,7 +25,7 @@
     "db:migrate:deploy": "npm --prefix apps/api run prisma:migrate:deploy",
     "db:migrate:status": "npm --prefix apps/api run prisma:migrate:status",
     "db:generate": "npm --prefix apps/api run prisma:generate",
-    "redis:cli": "docker compose exec redis redis-cli"
+    "ingest": "npm --prefix apps/api run ingest --"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

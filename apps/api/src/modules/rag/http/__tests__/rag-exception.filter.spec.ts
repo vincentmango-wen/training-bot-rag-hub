@@ -1,5 +1,9 @@
 import { z, type ZodError } from 'zod'
-import type { ArgumentsHost } from '@nestjs/common'
+import {
+  ServiceUnavailableException,
+  UnauthorizedException,
+  type ArgumentsHost,
+} from '@nestjs/common'
 import { RagExceptionFilter, zodIssuesToDetails } from '../rag-exception.filter'
 import { RagApiException } from '../rag-api.exception'
 import { ProviderError } from '../../infrastructure/providers/provider.types'
@@ -107,6 +111,39 @@ describe('RagExceptionFilter', () => {
       a.host,
     )
     expect(a.res._status).toBe(502)
+  })
+
+  // NestJS HttpException 分岐（Guard / Pipe / 内部 throw を 500 に潰さない / B-3 fix）
+  it('UnauthorizedException は 401 RAG_UNAUTHORIZED に写像（500 に潰さない）', () => {
+    const { host, res } = makeHost()
+    filter.catch(new UnauthorizedException('Invalid or missing bearer token'), host)
+    expect(res._status).toBe(401)
+    const body = res._body as {
+      success: boolean
+      error: { code: string; message: string }
+      meta: { trace_id: string }
+    }
+    expect(body.success).toBe(false)
+    expect(body.error.code).toBe('RAG_UNAUTHORIZED')
+    expect(body.error.message).toContain('bearer')
+    expect(body.meta.trace_id).toBe('t-1')
+  })
+
+  it('ServiceUnavailableException は 503 を保持（status を 500 に潰さない）', () => {
+    const { host, res } = makeHost()
+    filter.catch(
+      new ServiceUnavailableException('API authentication is not configured'),
+      host,
+    )
+    expect(res._status).toBe(503)
+    const body = res._body as {
+      success: boolean
+      error: { code: string; message: string }
+    }
+    // 503 は ERROR_CODES に専用コードが無いため RAG_INTERNAL_ERROR に寄せる仕様
+    // （httpStatus 503 を保つことが smoke-test T6 の判定で重要）
+    expect(body.error.code).toBe('RAG_INTERNAL_ERROR')
+    expect(body.error.message).toContain('not configured')
   })
 
   it('想定外例外は 500 RAG_INTERNAL_ERROR', () => {
