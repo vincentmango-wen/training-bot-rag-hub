@@ -13,12 +13,12 @@
 #
 # 必要な環境変数（引数では渡さない / ps・シェル履歴への露出回避）:
 #   BASE_URL              例: https://<project>.vercel.app
-#   RAG_API_TOKEN         アプリ側 Bearer（Phase 3 の API_BEARER_TOKEN と同値）
+#   API_BEARER_TOKEN         アプリ側 Bearer（Phase 3 の API_BEARER_TOKEN と同値）
 #   VERCEL_BYPASS_SECRET  Vercel Protection Bypass for Automation secret
 #
 # 実行例（値はシェル履歴に残さない / read -s 推奨）:
 #   export BASE_URL="https://<project>.vercel.app"
-#   read -s -p "RAG_API_TOKEN: " RAG_API_TOKEN; echo; export RAG_API_TOKEN
+#   read -s -p "API_BEARER_TOKEN: " API_BEARER_TOKEN; echo; export API_BEARER_TOKEN
 #   read -s -p "VERCEL_BYPASS_SECRET: " VERCEL_BYPASS_SECRET; echo; export VERCEL_BYPASS_SECRET
 #   bash docs/operations/cutover-smoke-test.sh                # read-only（既定 / LLM 課金ゼロ）
 #   bash docs/operations/cutover-smoke-test.sh --with-query   # opt-in（LLM 経路 / 24h 内は replay）
@@ -66,7 +66,7 @@ done
 # ============================================================
 missing=()
 [ -z "${BASE_URL:-}" ] && missing+=("BASE_URL")
-[ -z "${RAG_API_TOKEN:-}" ] && missing+=("RAG_API_TOKEN")
+[ -z "${API_BEARER_TOKEN:-}" ] && missing+=("API_BEARER_TOKEN")
 [ -z "${VERCEL_BYPASS_SECRET:-}" ] && missing+=("VERCEL_BYPASS_SECRET")
 
 if [ ${#missing[@]} -gt 0 ]; then
@@ -213,7 +213,7 @@ fi
 body_t4="$TMPDIR_LOCAL/body_t4"
 status_t4=$(do_curl "$body_t4" GET "/health" \
   -H "x-vercel-protection-bypass: ${VERCEL_BYPASS_SECRET}" \
-  -H "Authorization: Bearer ${RAG_API_TOKEN}")
+  -H "Authorization: Bearer ${API_BEARER_TOKEN}")
 ct_t4=$(classify_body "$body_t4")
 if [ "$status_t4" = "200" ] && [ "$ct_t4" = "json" ]; then
   # body に "status":"ok" が含まれること（値そのものは出さない / 含有のみ確認）
@@ -233,7 +233,7 @@ fi
 body_t5="$TMPDIR_LOCAL/body_t5"
 status_t5=$(do_curl "$body_t5" GET "/api/v1/rag/history?limit=1" \
   -H "x-vercel-protection-bypass: ${VERCEL_BYPASS_SECRET}" \
-  -H "Authorization: Bearer ${RAG_API_TOKEN}")
+  -H "Authorization: Bearer ${API_BEARER_TOKEN}")
 ct_t5=$(classify_body "$body_t5")
 if [ "$status_t5" = "200" ] && [ "$ct_t5" = "json" ]; then
   record "T5 db-read (history GET)" PASS "status=200 body=json"
@@ -255,7 +255,7 @@ if [ "$WITH_QUERY" = "1" ]; then
   body_t6="$TMPDIR_LOCAL/body_t6"
   status_t6=$(do_curl "$body_t6" POST "/api/v1/rag/query" \
     -H "x-vercel-protection-bypass: ${VERCEL_BYPASS_SECRET}" \
-    -H "Authorization: Bearer ${RAG_API_TOKEN}" \
+    -H "Authorization: Bearer ${API_BEARER_TOKEN}" \
     -H "Content-Type: application/json" \
     -H "Idempotency-Key: ${idem_key}" \
     -d '{"query":"cutover-smoke fixed payload","symbol":"BTC/USDT"}')
