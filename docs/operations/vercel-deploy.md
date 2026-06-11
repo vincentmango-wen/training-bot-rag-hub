@@ -18,14 +18,14 @@
 
 実施前に以下が満たされていることをチェック:
 
-- [ ] GitHub の自リポジトリ（例: `vincentmango-wen/training-bot-rga-hub`）に最新コードが push 済
-- [ ] リポジトリのルートに `vercel.json` が存在し、`/health` / `/api/v1/*` / フォールバックが同一関数 `apps/api/api/index.ts` に向いている（Phase 2 通過済）
-- [ ] `apps/api/api/index.ts` が初期化 Promise キャッシュ（G-1 / G-2）実装済（Phase 2 通過済）
-- [ ] Neon の接続文字列 2 種を手元に保持
+- [x] GitHub の自リポジトリ（例: `vincentmango-wen/training-bot-rga-hub`）に最新コードが push 済
+- [x] リポジトリのルートに `vercel.json` が存在し、`/health` / `/api/v1/`* / フォールバックが同一関数 `apps/api/api/index.ts` に向いている（Phase 2 通過済）
+- [x] `apps/api/api/index.ts` が初期化 Promise キャッシュ（G-1 / G-2）実装済（Phase 2 通過済）
+- [x] Neon の接続文字列 2 種を手元に保持
   - Pooled URL（`-pooler` ホスト / `?sslmode=require&pgbouncer=true&connection_limit=1&schema=public`）
   - Direct URL（`-pooler` 無し / `?sslmode=require&schema=public`）
   - 詳細は `docs/operations/neon-setup.md`
-- [ ] OpenAI API キーを手元に保持（未保有なら https://platform.openai.com/api-keys から発行）
+- [x] OpenAI API キーを手元に保持（未保有なら [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys) から発行）
 - [ ] ローカルで `openssl` が叩ける（macOS は標準）
 
 ---
@@ -61,29 +61,33 @@ git commit -m "chore: sync lockfile for @pmtp/shared workspace dep"
 検証ポイント:
 
 - [ ] `apps/api/package-lock.json` の `packages` セクションに `node_modules/@pmtp/shared`
-      が `"resolved": "../../packages/shared"` 形式で記載されている
+  ```
+  が `"resolved": "../../packages/shared"` 形式で記載されている
+  ```
 - [ ] `packages/shared/dist/index.js` と `packages/shared/dist/index.d.ts` が生成済
-      （gitignore 対象だが、Vercel の postinstall がビルドで再生成する）
+  ```
+  （gitignore 対象だが、Vercel の postinstall がビルドで再生成する）
+  ```
 - [ ] `node_modules/@pmtp/shared` が symlink として `packages/shared` を指している
 
 トラブル時:
 
 - `npm ci` が「lockfile out of sync」で落ちる → 上記手順 1-3 を再実行し lockfile を再生成
 - `packages/shared/dist not found` が build ログに出る → §7「トラブルシュート」参照
-  （根本原因は `apps/api/package.json` の `postinstall` が shared build を呼ぶ実装になっていることを確認）
+（根本原因は `apps/api/package.json` の `postinstall` が shared build を呼ぶ実装になっていることを確認）
 
 ---
 
 ## 2. Vercel プロジェクト作成
 
-1. https://vercel.com にログイン（GitHub OAuth）
+1. [https://vercel.com](https://vercel.com) にログイン（GitHub OAuth）
 2. 右上「Add New…」→ **Project** を選択
 3. **Import Git Repository** で `training-bot-rga-hub` を選択
 4. **Configure Project** 画面:
-   - **Project Name**: 任意（例: `training-bot-rag-hub`）。後で変えにくいので確定値を入れる
-   - **Framework Preset**: `Other`
-   - **Root Directory**: `./`（ルート）。**変更しない**
-   - **Build & Output Settings**: そのまま（`vercel.json` の `builds` 設定が優先されるため、ダッシュボード側の Build Command / Output Directory は無視される。Phase 2 設計書 §2 隠れコスト参照）
+  - **Project Name**: 任意（例: `training-bot-rag-hub`）。後で変えにくいので確定値を入れる
+  - **Framework Preset**: `Other`
+  - **Root Directory**: `./`（ルート）。**変更しない**
+  - **Build & Output Settings**: そのまま（`vercel.json` の `builds` 設定が優先されるため、ダッシュボード側の Build Command / Output Directory は無視される。Phase 2 設計書 §2 隠れコスト参照）
 5. **Environment Variables** セクションは次章で投入するため、ここでは **何も入れず空のまま** 進む
 6. 「**Deploy**」を**まだ押さない**。Stop / Skip Deployment があれば押す。なければ先に Deploy が走ってしまうが、後で環境変数を投入して再 deploy するので OK（最初の 1 回は確実に失敗する）
 
@@ -95,12 +99,14 @@ Project Settings → **Environment Variables** から以下を 1 つずつ追加
 
 ### 3-1. 投入対象一覧
 
-| Key | 値の取得元 | Environment |
-|---|---|---|
-| `DATABASE_URL` | Neon Pooled URL（`-pooler` ホスト + `?sslmode=require&pgbouncer=true&connection_limit=1&schema=public`） | Production / Preview / Development 全部 |
-| `DIRECT_URL` | Neon Direct URL（`-pooler` 無し + `?sslmode=require&schema=public`） | Production / Preview / Development 全部 |
-| `OPENAI_API_KEY` | OpenAI ダッシュボード | Production / Preview / Development 全部 |
-| `API_BEARER_TOKEN` | **次節 §3-2 で生成** | Production / Preview / Development 全部 |
+
+| Key                | 値の取得元                                                                                               | Environment                           |
+| ------------------ | --------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `DATABASE_URL`     | Neon Pooled URL（`-pooler` ホスト + `?sslmode=require&pgbouncer=true&connection_limit=1&schema=public`） | Production / Preview / Development 全部 |
+| `DIRECT_URL`       | Neon Direct URL（`-pooler` 無し + `?sslmode=require&schema=public`）                                    | Production / Preview / Development 全部 |
+| `OPENAI_API_KEY`   | OpenAI ダッシュボード                                                                                      | Production / Preview / Development 全部 |
+| `API_BEARER_TOKEN` | **次節 §3-2 で生成**                                                                                     | Production / Preview / Development 全部 |
+
 
 ### 3-2. `API_BEARER_TOKEN` の生成
 
@@ -124,13 +130,13 @@ Project Settings → Environment Variables 画面で 4 件すべてが「Sensiti
 
 1. Project Settings → **Deployment Protection**（左サイドバー）
 2. **Vercel Authentication** セクション:
-   - **Standard Protection** を有効化
-   - 公式ドキュメント: https://vercel.com/docs/deployment-protection/methods-to-protect-deployments/vercel-authentication
-   - ⚠️ **要実機確認**: Standard Protection の保護範囲（特に Production custom domain / preview URL の扱い）は公式ドキュメントの**現時点の記載**で確認する。本ランブック作成時の理解と将来の Vercel 仕様が変わっている可能性あり（設計書 §3 判断 5 / 自己制約 4 観点）。最終的な保護有効性は §6 の smoke-test Test 1 で**実機検証**する
+  - **Standard Protection** を有効化
+  - 公式ドキュメント: [https://vercel.com/docs/deployment-protection/methods-to-protect-deployments/vercel-authentication](https://vercel.com/docs/deployment-protection/methods-to-protect-deployments/vercel-authentication)
+  - ⚠️ **要実機確認**: Standard Protection の保護範囲（特に Production custom domain / preview URL の扱い）は公式ドキュメントの**現時点の記載**で確認する。本ランブック作成時の理解と将来の Vercel 仕様が変わっている可能性あり（設計書 §3 判断 5 / 自己制約 4 観点）。最終的な保護有効性は §6 の smoke-test Test 1 で**実機検証**する
 3. **Protection Bypass for Automation** セクション:
-   - **Create Secret** を押して bypass secret を発行（curl / スクリプト疎通用）
-   - 値をパスワードマネージャに保管（**ダッシュボードを閉じると再表示されないものがある**）
-   - 公式ドキュメント: https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation
+  - **Create Secret** を押して bypass secret を発行（curl / スクリプト疎通用）
+  - 値をパスワードマネージャに保管（**ダッシュボードを閉じると再表示されないものがある**）
+  - 公式ドキュメント: [https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation)
 
 > **bypass secret の取扱**: 漏洩したら Standard Protection が形骸化する。GitHub Issue / PR / Slack に貼らない。再発行すると旧 secret は即無効化される（§9 ローテーション参照）。
 
@@ -151,12 +157,14 @@ Project Settings → Environment Variables 画面で 4 件すべてが「Sensiti
 
 Deployments → 該当 deployment → **Build Logs** を開き、以下を確認:
 
-| チェック項目 | 失敗時の症状 | 対処 |
-|---|---|---|
-| `prisma generate` が成功 | `Error: schema.prisma not found` | `vercel.json` の `builds` 設定で `installCommand` が `apps/api` を含むか確認 |
-| `@pmtp/shared` が解決できる | `Cannot find module '@pmtp/shared'` | `packages/shared` の `dist/` が build 前に生成されているか確認 |
-| 関数サイズが Hobby plan 上限内 | `Function exceeds size limit` | `vercel.json` の `includeFiles` / `excludeFiles` で `node_modules` を絞る |
-| `apps/api/api/index.ts` の export | `Handler not found` | `export default async function(req, res)` 形式になっているか |
+
+| チェック項目                           | 失敗時の症状                              | 対処                                                                   |
+| -------------------------------- | ----------------------------------- | -------------------------------------------------------------------- |
+| `prisma generate` が成功            | `Error: schema.prisma not found`    | `vercel.json` の `builds` 設定で `installCommand` が `apps/api` を含むか確認    |
+| `@pmtp/shared` が解決できる            | `Cannot find module '@pmtp/shared'` | `packages/shared` の `dist/` が build 前に生成されているか確認                     |
+| 関数サイズが Hobby plan 上限内            | `Function exceeds size limit`       | `vercel.json` の `includeFiles` / `excludeFiles` で `node_modules` を絞る |
+| `apps/api/api/index.ts` の export | `Handler not found`                 | `export default async function(req, res)` 形式になっているか                  |
+
 
 ### 5-3. deploy 完了後の URL
 
@@ -214,13 +222,15 @@ SELECT * FROM pg_extension WHERE extname = 'vector';
 
 ## 8. トラブルシュート（よく出る症状）
 
-| 症状 | 真因の候補 | 確認手順 |
-|---|---|---|
-| Test 1 で 200 が返る | Standard Protection が効いていない / 該当 URL が保護対象外 | Project Settings → Deployment Protection の有効化状態 / URL 種別（production vs preview） |
-| Test 2 / Test 3 で HTML が返る | bypass secret 不一致 → Vercel 側で止まっている | secret の値・ヘッダ名（`x-vercel-protection-bypass`）の typo 確認 |
-| 全リクエストが JSON 503 | `API_BEARER_TOKEN` が Vercel 環境変数に投入されていない / 空文字 | Project Settings → Environment Variables / 関数ログで `[BearerTokenGuard] API_BEARER_TOKEN is not configured` を確認 |
-| 404 が返る | `vercel.json` のルーティング / build 時の関数登録漏れ | Build Logs に `Functions: api/index.ts` が出ているか |
-| 500 が返る | bootstrap 失敗（Prisma / DB 接続 / OpenAI 初期化） | 関数ログで `[vercel-handler]` プレフィックスのエラーを確認（G-2 ログ） |
+
+| 症状                         | 真因の候補                                           | 確認手順                                                                                                         |
+| -------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Test 1 で 200 が返る           | Standard Protection が効いていない / 該当 URL が保護対象外     | Project Settings → Deployment Protection の有効化状態 / URL 種別（production vs preview）                              |
+| Test 2 / Test 3 で HTML が返る | bypass secret 不一致 → Vercel 側で止まっている             | secret の値・ヘッダ名（`x-vercel-protection-bypass`）の typo 確認                                                        |
+| 全リクエストが JSON 503           | `API_BEARER_TOKEN` が Vercel 環境変数に投入されていない / 空文字 | Project Settings → Environment Variables / 関数ログで `[BearerTokenGuard] API_BEARER_TOKEN is not configured` を確認 |
+| 404 が返る                    | `vercel.json` のルーティング / build 時の関数登録漏れ          | Build Logs に `Functions: api/index.ts` が出ているか                                                                |
+| 500 が返る                    | bootstrap 失敗（Prisma / DB 接続 / OpenAI 初期化）       | 関数ログで `[vercel-handler]` プレフィックスのエラーを確認（G-2 ログ）                                                              |
+
 
 ---
 
@@ -255,4 +265,5 @@ SELECT * FROM pg_extension WHERE extname = 'vector';
 - smoke-test: `docs/operations/smoke-test.md`
 - Phase 2 serverless: `docs/operations/phase-2-design.md`
 - Neon セットアップ: `docs/operations/neon-setup.md`
-- Vercel 公式: https://vercel.com/docs/projects/environment-variables
+- Vercel 公式: [https://vercel.com/docs/projects/environment-variables](https://vercel.com/docs/projects/environment-variables)
+

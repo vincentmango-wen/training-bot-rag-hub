@@ -27,6 +27,7 @@
         "@nestjs/platform-express": "^10.4.22",
         "@pmtp/shared": "file:../../packages/shared",
         "@prisma/client": "5.22.0",
+        "openai": "^6.42.0",
         "reflect-metadata": "^0.2.2",
         "rxjs": "^7.8.2",
         "zod": "^3.25.76"
